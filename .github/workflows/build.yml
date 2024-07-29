@@ -23,7 +23,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install pyinstaller pyarmor
+          pip install pyinstaller pyarmor==7
           pip install httpx beautifulsoup4
 
       - name: Obfuscate Python script
