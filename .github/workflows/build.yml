@@ -1,4 +1,4 @@
-name: Build and Obfuscate Windows Executable with Nuitka
+name: Build and Obfuscate Windows Executable
 
 on:
   push:
@@ -26,14 +26,16 @@ jobs:
           pip install nuitka
           pip install httpx beautifulsoup4
 
-      - name: Compile Python script
+      - name: Compile with Nuitka
         run: |
-          nuitka --onefile --windows-disable-console hej.py
+          nuitka --standalone --follow-imports --windows-disable-console hej.py
 
-      - name: Rename and Upload executable
+      - name: Rename executable
         run: |
-          move hej.exe HittaEmail.exe
-          actions/upload-artifact@v3
-          with:
-            name: HittaEmail_executable
-            path: HittaEmail.exe
+          if (Test-Path "dist/hej.exe") { Rename-Item "dist/hej.exe" -NewName "HittaEmail.exe" }
+
+      - name: Upload executable
+        uses: actions/upload-artifact@v3
+        with:
+          name: hittaemail_executable
+          path: dist/HittaEmail.exe
