@@ -11,6 +11,7 @@ on:
 jobs:
   build:
     runs-on: windows-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -23,7 +24,6 @@ jobs:
       - name: Install dependencies
         run: |
           pip install pyinstaller pyarmor
-
           pip install httpx beautifulsoup4
 
       - name: Obfuscate Python script
