@@ -26,6 +26,12 @@ class EmailScraperApp:
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0'
         ]
 
+        # Check the key immediately upon initialization
+        if not asyncio.run(self.verify_key()):
+            messagebox.showwarning("ERROR", "ERROR 404")
+            self.root.destroy()
+            return
+
         # Set up the GUI
         self.frame = tk.Frame(root)
         self.frame.pack(pady=20, padx=20)
@@ -52,8 +58,16 @@ class EmailScraperApp:
         self.text_without_websites.grid(row=5, column=0, columnspan=2, padx=5, pady=5)
 
         self.update_interval = 1000  # Update interval in milliseconds
+        self.valid_key = True
+
+        # Start the key verification loop
+        threading.Thread(target=self.check_key_loop, daemon=True).start()
 
     def start_scraper(self):
+        if not self.valid_key:
+            messagebox.showwarning("ERROR", "ERROR 404")
+            return
+
         # Open a new window to show loading status
         self.loading_window = Toplevel(self.root)
         self.loading_window.title("Loading")
@@ -177,6 +191,25 @@ class EmailScraperApp:
         self.update_gui()
         self.loading_window.destroy()
         messagebox.showinfo("Scraper", f"Scraping completed. Total pages processed: {self.total_pages}")
+
+    async def verify_key(self):
+        url = "https://truevision.se/hej.txt"  # Update this to your key file's URL
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.get(url)
+                response.raise_for_status()
+                key = response.text.strip()
+                return key == "faca2f2d03dbdd580aaaf38c3f53661acc70555f4ff22bd1098a45a530865e0e"  # Replace with your actual key
+            except httpx.HTTPError:
+                return False
+
+    def check_key_loop(self):
+        while True:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            self.valid_key = loop.run_until_complete(self.verify_key())
+            loop.close()
+            time.sleep(100)  # Check every 100 seconds
 
 # Initialize the GUI
 root = tk.Tk()
