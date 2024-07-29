@@ -1,4 +1,4 @@
-name: Build and Obfuscate Windows Executable
+name: Build and Obfuscate Windows Executable with Nuitka
 
 on:
   push:
@@ -23,19 +23,17 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install pyinstaller pyarmor==7
+          pip install nuitka
           pip install httpx beautifulsoup4
 
-      - name: Obfuscate Python script
+      - name: Compile Python script
         run: |
-          pyarmor pack -e " --onefile" hej.py
+          nuitka --onefile --windows-disable-console hej.py
 
-      - name: Build executable
+      - name: Rename and Upload executable
         run: |
-          pyinstaller --onefile --name HittaEmail dist/hej.py
-
-      - name: Upload executable
-        uses: actions/upload-artifact@v3
-        with:
-          name: HittaEmail_executable
-          path: dist/HittaEmail.exe
+          move hej.exe HittaEmail.exe
+          actions/upload-artifact@v3
+          with:
+            name: HittaEmail_executable
+            path: HittaEmail.exe
