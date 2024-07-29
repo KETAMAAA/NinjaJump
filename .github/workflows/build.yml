@@ -1,4 +1,4 @@
-name: Build and Obfuscate Windows Executable
+name: Build Windows Executable
 
 on:
   push:
@@ -23,15 +23,15 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install nuitka
-          pip install httpx beautifulsoup4
+          pip install pyinstaller httpx beautifulsoup4
 
-      - name: Compile with Nuitka
+      - name: Compile with PyInstaller
         run: |
-          nuitka --standalone --windows-console-mode=disable --enable-plugin=tk-inter hej.py
+          pyinstaller --onefile --windowed --name HittaEmail hej.py
 
-      - name: Rename executable
+      - name: Rename executable (if needed)
         run: |
+          # If using a different name or location, adjust as necessary
           if (Test-Path "dist/hej.exe") { Rename-Item "dist/hej.exe" -NewName "HittaEmail.exe" }
 
       - name: Upload executable
