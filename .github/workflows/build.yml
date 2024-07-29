@@ -28,7 +28,7 @@ jobs:
 
       - name: Compile with Nuitka
         run: |
-          nuitka --standalone --follow-imports --windows-disable-console hej.py
+          nuitka --standalone --windows-console-mode=disable --enable-plugin=tk-inter hej.py
 
       - name: Rename executable
         run: |
