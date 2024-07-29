@@ -23,12 +23,16 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install pyinstaller
+          pip install pyinstaller pyarmor
           pip install httpx beautifulsoup4
+
+      - name: Obfuscate Python script
+        run: |
+          pyarmor gen hej.py
 
       - name: Build executable
         run: |
-          pyinstaller --onefile hej.py
+          pyinstaller --onefile --add-data "pytransform;pytransform" dist/hej.py
 
       - name: Upload executable
         uses: actions/upload-artifact@v3
