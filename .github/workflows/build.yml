@@ -23,16 +23,16 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install pyinstaller pyobfuscate
+          pip install pyinstaller pyarmor
           pip install httpx beautifulsoup4
 
       - name: Obfuscate Python script
         run: |
-          pyobfuscate hej.py > obfuscated_hej.py
+          pyarmor pack -e " --onefile" hej.py
 
       - name: Build executable
         run: |
-          pyinstaller --onefile --name HittaEmail obfuscated_hej.py
+          pyinstaller --onefile --name HittaEmail dist/hej.py
 
       - name: Upload executable
         uses: actions/upload-artifact@v3
