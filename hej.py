@@ -4,7 +4,6 @@ from bs4 import BeautifulSoup
 import re
 import random
 from asyncio import Semaphore
-from json_manager import update_json  # Import the JSON management functions
 
 class EmailScraperApp:
     def __init__(self):
@@ -21,28 +20,26 @@ class EmailScraperApp:
             'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.3 Safari/605.1.15',
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0'
         ]
-        self.json_file = 'emails_and_companies.json'
-        self.key_url = "https://truevision.se/hej.txt"
-        self.expected_key = "faca2f2d03dbdd580aaaf38c3f53661acc70555f4ff22bd1098a45a530865e0e"
 
     async def verify_key(self):
+        url = "https://truevision.se/hej.txt"  # Uppdatera detta till din nyckelfils URL
         async with httpx.AsyncClient() as client:
             try:
-                response = await client.get(self.key_url)
+                response = await client.get(url)
                 response.raise_for_status()
                 key = response.text.strip()
-                return key == self.expected_key
+                return key == "faca2f2d03dbdd580aaaf38c3f53661acc70555f4ff22bd1098a45a530865e0e"  # Ersätt med din faktiska nyckel
             except httpx.HTTPError:
                 return False
 
-    async def start_key_verification_loop(self):
-        if not await self.verify_key():
-            exit()
-
+    async def key_check_loop(self):
         while True:
+            valid = await self.verify_key()
+            if not valid:
+                print("Nyckeln är ogiltig eller inte hittad. Applikationen avslutas.")
+                self.stop_scraper_flag = True
+                return
             await asyncio.sleep(60)
-            if not await self.verify_key():
-                exit()
 
     async def fetch(self, url, client):
         headers = {
@@ -102,15 +99,17 @@ class EmailScraperApp:
         print(f"Next page link found: {has_next_page}")
         return has_next_page
 
-    async def scrape_emails_and_websites(self, client: httpx.AsyncClient, category: str):
+    async def scrape_emails_and_websites(self, client: httpx.AsyncClient):
         print(f"Processing {len(self.links)} links.")
         for i, link in enumerate(self.links):
             if self.stop_scraper_flag:
                 print("Stop scraper flag set. Exiting scrape_emails_and_websites.")
                 return
-            emails, has_website, company_name = await self.process_link(link, client)
-            if company_name:
-                update_json(self.json_file, category, emails, company_name)
+            emails, has_website = await self.process_link(link, client)
+            if has_website:
+                self.emails_with_websites.update(emails)
+            else:
+                self.emails_without_websites.update(emails)
             print(f"Processing link: {i + 1}/{self.total_results} - {link}")
             await asyncio.sleep(0)
 
@@ -121,18 +120,17 @@ class EmailScraperApp:
         try:
             response = await self.fetch(link, client)
             if response is None:
-                return [], False, None
+                return [], False
         except httpx.HTTPStatusError as e:
             print(f"Failed to fetch link {link}: {e}")
-            return [], False, None
+            return [], False
 
         soup = BeautifulSoup(response.text, "html.parser")
 
         company_name_tag = soup.find("h3", class_="style_title__2C92s")
-        company_name = company_name_tag.get_text(strip=True) if company_name_tag else None
-
         emails = []
-        if company_name:
+
+        if company_name_tag:
             email_links = soup.find_all("a", attrs={"data-track": re.compile("e-mail")})
             if not email_links:
                 email_links = soup.find_all("a", attrs={"href": re.compile("mailto:")})
@@ -146,12 +144,20 @@ class EmailScraperApp:
 
             website_tag = soup.find("a", attrs={"data-track": re.compile("homepage-detail|directlink_web_page")})
             has_website = bool(website_tag)
-            print(f"Found emails: {emails}, Has website: {has_website}, Company Name: {company_name}")
-            return emails, has_website, company_name
+            print(f"Found emails: {emails}, Has website: {has_website}")
+            return emails, has_website
 
-        return [], False, None
+        return [], False
 
     async def run(self, search_term: str):
+        # Kör nyckelverifiering vid start
+        if not await self.verify_key():
+            print("Nyckeln är ogiltig eller inte hittad. Applikationen avslutas.")
+            return
+        
+        # Starta verifieringsslingan parallellt med resten av programmet
+        asyncio.create_task(self.key_check_loop())
+
         async with httpx.AsyncClient() as client:
             while True:
                 has_next_page = await self.scrape_hittase_search(search_term, self.current_page, client)
@@ -159,16 +165,20 @@ class EmailScraperApp:
                     break
                 self.current_page += 1
 
-            await self.scrape_emails_and_websites(client, search_term)
+            await self.scrape_emails_and_websites(client)
             self.display_results()
 
     def display_results(self):
-        print("\nResults have been saved to JSON file.")
+        print("\nEmails with Websites:")
+        if self.emails_with_websites:
+            print("\n".join(sorted(self.emails_with_websites)))
+        print("\nEmails without Websites:")
+        if self.emails_without_websites:
+            print("\n".join(sorted(self.emails_without_websites)))
+
 
 # Example usage
 if __name__ == "__main__":
     scraper = EmailScraperApp()
     search_term = input("Enter search term: ").replace(' ', '%20')
-    loop = asyncio.get_event_loop()
-    loop.create_task(scraper.start_key_verification_loop())
-    loop.run_until_complete(scraper.run(search_term))
+    asyncio.run(scraper.run(search_term))
