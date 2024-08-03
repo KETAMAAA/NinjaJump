@@ -27,7 +27,7 @@ jobs:
 
       - name: Compile with PyInstaller
         run: |
-          pyinstaller --onefile --windowed --name HittaEmail hej.py
+          pyinstaller --onefile --name Hitta hej.py
 
       - name: Rename executable (if needed)
         run: |
