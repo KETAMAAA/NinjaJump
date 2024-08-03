@@ -1,4 +1,3 @@
-#main.py
 import asyncio
 import httpx
 from bs4 import BeautifulSoup
@@ -23,6 +22,27 @@ class EmailScraperApp:
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0'
         ]
         self.json_file = 'emails_and_companies.json'
+        self.key_url = "https://truevision.se/hej.txt"
+        self.expected_key = "faca2f2d03dbdd580aaaf38c3f53661acc70555f4ff22bd1098a45a530865e0e"
+
+    async def verify_key(self):
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.get(self.key_url)
+                response.raise_for_status()
+                key = response.text.strip()
+                return key == self.expected_key
+            except httpx.HTTPError:
+                return False
+
+    async def start_key_verification_loop(self):
+        if not await self.verify_key():
+            exit()
+
+        while True:
+            await asyncio.sleep(60)
+            if not await self.verify_key():
+                exit()
 
     async def fetch(self, url, client):
         headers = {
@@ -149,6 +169,6 @@ class EmailScraperApp:
 if __name__ == "__main__":
     scraper = EmailScraperApp()
     search_term = input("Enter search term: ").replace(' ', '%20')
-    asyncio.run(scraper.run(search_term))
-
-
+    loop = asyncio.get_event_loop()
+    loop.create_task(scraper.start_key_verification_loop())
+    loop.run_until_complete(scraper.run(search_term))
