@@ -32,10 +32,10 @@ jobs:
       - name: Rename executable (if needed)
         run: |
           # If using a different name or location, adjust as necessary
-          if (Test-Path "dist/hej.exe") { Rename-Item "dist/hej.exe" -NewName "HittaEmail.exe" }
+          if (Test-Path "dist/hej.exe") { Rename-Item "dist/hej.exe" -NewName "Hitta.exe" }
 
       - name: Upload executable
         uses: actions/upload-artifact@v3
         with:
           name: hittaemail_executable
-          path: dist/HittaEmail.exe
+          path: dist/Hitta.exe
