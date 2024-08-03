@@ -21,26 +21,6 @@ class EmailScraperApp:
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0'
         ]
 
-    async def verify_key(self):
-        url = "https://truevision.se/hej.txt"  # Uppdatera detta till din nyckelfils URL
-        async with httpx.AsyncClient() as client:
-            try:
-                response = await client.get(url)
-                response.raise_for_status()
-                key = response.text.strip()
-                return key == "faca2f2d03dbdd580aaaf38c3f53661acc70555f4ff22bd1098a45a530865e0e"  # Ersätt med din faktiska nyckel
-            except httpx.HTTPError:
-                return False
-
-    async def key_check_loop(self):
-        while True:
-            valid = await self.verify_key()
-            if not valid:
-                print("Nyckeln är ogiltig eller inte hittad. Applikationen avslutas.")
-                self.stop_scraper_flag = True
-                return
-            await asyncio.sleep(60)
-
     async def fetch(self, url, client):
         headers = {
             'User-Agent': random.choice(self.user_agents)
@@ -150,14 +130,6 @@ class EmailScraperApp:
         return [], False
 
     async def run(self, search_term: str):
-        # Kör nyckelverifiering vid start
-        if not await self.verify_key():
-            print("Nyckeln är ogiltig eller inte hittad. Applikationen avslutas.")
-            return
-        
-        # Starta verifieringsslingan parallellt med resten av programmet
-        asyncio.create_task(self.key_check_loop())
-
         async with httpx.AsyncClient() as client:
             while True:
                 has_next_page = await self.scrape_hittase_search(search_term, self.current_page, client)
