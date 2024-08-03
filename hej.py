@@ -1,138 +1,118 @@
+#main.py
 import asyncio
 import httpx
 from bs4 import BeautifulSoup
 import re
-import tkinter as tk
-from tkinter import scrolledtext, messagebox, Toplevel
-from asyncio import Semaphore
 import random
-import threading
-import time
+from asyncio import Semaphore
+from json_manager import update_json  # Import the JSON management functions
 
 class EmailScraperApp:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Email Scraper")
+    def __init__(self):
         self.links = []
         self.emails_with_websites = set()
         self.emails_without_websites = set()
         self.current_page = 1
         self.total_pages = 0
-
+        self.total_results = 0
+        self.stop_scraper_flag = False
         self.semaphore = Semaphore(10)
         self.user_agents = [
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
             'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.3 Safari/605.1.15',
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0'
         ]
-
-        # Check the key immediately upon initialization
-        if not asyncio.run(self.verify_key()):
-            messagebox.showwarning("ERROR", "ERROR 404")
-            self.root.destroy()
-            return
-
-        # Set up the GUI
-        self.frame = tk.Frame(root)
-        self.frame.pack(pady=20, padx=20)
-
-        self.label = tk.Label(self.frame, text="Enter search term:")
-        self.label.grid(row=0, column=0, padx=5, pady=5)
-
-        self.entry = tk.Entry(self.frame, width=40)
-        self.entry.grid(row=0, column=1, padx=5, pady=5)
-
-        self.button = tk.Button(self.frame, text="Run Scraper", command=self.start_scraper)
-        self.button.grid(row=1, column=0, columnspan=2, padx=5, pady=5)
-
-        self.label_with_websites = tk.Label(self.frame, text="Emails with Websites:")
-        self.label_with_websites.grid(row=2, column=0, columnspan=2, pady=10)
-
-        self.text_with_websites = scrolledtext.ScrolledText(self.frame, width=80, height=10)
-        self.text_with_websites.grid(row=3, column=0, columnspan=2, padx=5, pady=5)
-
-        self.label_without_websites = tk.Label(self.frame, text="Emails without Websites:")
-        self.label_without_websites.grid(row=4, column=0, columnspan=2, pady=10)
-
-        self.text_without_websites = scrolledtext.ScrolledText(self.frame, width=80, height=10)
-        self.text_without_websites.grid(row=5, column=0, columnspan=2, padx=5, pady=5)
-
-        self.update_interval = 1000  # Update interval in milliseconds
-        self.valid_key = True
-
-        # Start the key verification loop
-        threading.Thread(target=self.check_key_loop, daemon=True).start()
-
-    def start_scraper(self):
-        if not self.valid_key:
-            messagebox.showwarning("ERROR", "ERROR 404")
-            return
-
-        # Open a new window to show loading status
-        self.loading_window = Toplevel(self.root)
-        self.loading_window.title("Loading")
-        self.loading_label = tk.Label(self.loading_window, text="Scraping in progress. Please wait...")
-        self.loading_label.pack(padx=20, pady=20)
-
-        # Run the scraper in a separate thread
-        threading.Thread(target=self.run_scraper, daemon=True).start()
-
-    def run_scraper(self):
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(self._run_scraper())
+        self.json_file = 'emails_and_companies.json'
 
     async def fetch(self, url, client):
         headers = {
             'User-Agent': random.choice(self.user_agents)
         }
-        async with self.semaphore:
-            response = await client.get(url, headers=headers)
-        response.raise_for_status()
-        await asyncio.sleep(random.uniform(1, 3))  # Random delay between requests
-        return response
+        retries = 0
+        max_retries = 5
+
+        while retries < max_retries:
+            if self.stop_scraper_flag:
+                print("Stop scraper flag set. Exiting fetch.")
+                return None
+            try:
+                async with self.semaphore:
+                    print(f"Fetching URL: {url}")
+                    response = await client.get(url, headers=headers, timeout=30.0)
+                response.raise_for_status()
+                await asyncio.sleep(random.uniform(1, 3))
+                print(f"Successfully fetched URL: {url}")
+                return response
+            except (httpx.ReadTimeout, httpx.HTTPStatusError) as e:
+                retries += 1
+                print(f"Error occurred for URL: {url}. Retrying in 10 seconds... (Attempt {retries})")
+                await asyncio.sleep(10)
+
+        print(f"Failed to fetch URL: {url} after {max_retries} retries.")
+        return None
 
     async def scrape_hittase_search(self, search_term: str, page: int, client: httpx.AsyncClient):
         main_url = f"https://www.hitta.se/sök?vad={search_term}&typ=ftg&sida={page}&riks=1"
+        print(f"Scraping search results for URL: {main_url}")
         try:
             response = await self.fetch(main_url, client)
+            if response is None:
+                return False
         except httpx.HTTPStatusError as e:
             print(f"Failed to fetch page {page}: {e}")
             return False
 
         soup = BeautifulSoup(response.text, "html.parser")
 
+        try:
+            results_text = soup.find("span", class_="style_tabNumbers__VbAE7").get_text()
+            self.total_results = int(results_text.replace(',', ''))
+            self.total_pages = (self.total_results + 24) // 25
+        except AttributeError as e:
+            print(f"Failed to extract total results: {e}")
+            self.total_results = 0
+            self.total_pages = 0
+
         for link_box in soup.find_all("a", attrs={"data-test": "search-list-link"}):
             link = "https://www.hitta.se" + link_box.get("href")
             self.links.append(link)
 
         next_page_link = soup.find("a", attrs={"data-test": "next"})
-        return bool(next_page_link)
+        has_next_page = bool(next_page_link)
+        print(f"Next page link found: {has_next_page}")
+        return has_next_page
 
-    async def scrape_emails_and_websites(self, client: httpx.AsyncClient):
-        for link in self.links:
-            emails, has_website = await self.process_link(link, client)
-            if has_website:
-                self.emails_with_websites.update(emails)
-            else:
-                self.emails_without_websites.update(emails)
-            # Schedule a GUI update after processing each link
-            self.root.after(0, self.update_gui)
-            await asyncio.sleep(0)  # Allow other tasks to run
+    async def scrape_emails_and_websites(self, client: httpx.AsyncClient, category: str):
+        print(f"Processing {len(self.links)} links.")
+        for i, link in enumerate(self.links):
+            if self.stop_scraper_flag:
+                print("Stop scraper flag set. Exiting scrape_emails_and_websites.")
+                return
+            emails, has_website, company_name = await self.process_link(link, client)
+            if company_name:
+                update_json(self.json_file, category, emails, company_name)
+            print(f"Processing link: {i + 1}/{self.total_results} - {link}")
+            await asyncio.sleep(0)
+
+        self.links.clear()
 
     async def process_link(self, link: str, client: httpx.AsyncClient):
+        print(f"Processing link: {link}")
         try:
             response = await self.fetch(link, client)
+            if response is None:
+                return [], False, None
         except httpx.HTTPStatusError as e:
             print(f"Failed to fetch link {link}: {e}")
-            return [], False
+            return [], False, None
 
         soup = BeautifulSoup(response.text, "html.parser")
 
         company_name_tag = soup.find("h3", class_="style_title__2C92s")
-        emails = []
+        company_name = company_name_tag.get_text(strip=True) if company_name_tag else None
 
-        if company_name_tag:
+        emails = []
+        if company_name:
             email_links = soup.find_all("a", attrs={"data-track": re.compile("e-mail")})
             if not email_links:
                 email_links = soup.find_all("a", attrs={"href": re.compile("mailto:")})
@@ -146,72 +126,29 @@ class EmailScraperApp:
 
             website_tag = soup.find("a", attrs={"data-track": re.compile("homepage-detail|directlink_web_page")})
             has_website = bool(website_tag)
-            return emails, has_website
+            print(f"Found emails: {emails}, Has website: {has_website}, Company Name: {company_name}")
+            return emails, has_website, company_name
 
-        return [], False
+        return [], False, None
 
-    def update_gui(self):
-        # Update the GUI elements with the current results
-        self.text_with_websites.delete('1.0', tk.END)
-        self.text_without_websites.delete('1.0', tk.END)
-
-        if self.emails_with_websites:
-            self.text_with_websites.insert(tk.END, "\n".join(sorted(self.emails_with_websites)))
-        else:
-            self.text_with_websites.insert(tk.END, "No emails found with websites.")
-
-        if self.emails_without_websites:
-            self.text_without_websites.insert(tk.END, "\n".join(sorted(self.emails_without_websites)))
-        else:
-            self.text_without_websites.insert(tk.END, "No emails found without websites.")
-
-    async def _run_scraper(self):
-        search_term = self.entry.get()
-        if not search_term:
-            messagebox.showwarning("Input Error", "Please enter a search term.")
-            self.loading_window.destroy()
-            return
-
-        self.links = []
-        self.emails_with_websites = set()
-        self.emails_without_websites = set()
-        self.current_page = 1
-        self.total_pages = 0
-
+    async def run(self, search_term: str):
         async with httpx.AsyncClient() as client:
             while True:
                 has_next_page = await self.scrape_hittase_search(search_term, self.current_page, client)
-                await self.scrape_emails_and_websites(client)
-                self.current_page += 1
-                self.total_pages += 1
-
-                if not has_next_page:
+                if not has_next_page or self.current_page >= self.total_pages:
                     break
+                self.current_page += 1
 
-        self.update_gui()
-        self.loading_window.destroy()
-        messagebox.showinfo("Scraper", f"Scraping completed. Total pages processed: {self.total_pages}")
+            await self.scrape_emails_and_websites(client, search_term)
+            self.display_results()
 
-    async def verify_key(self):
-        url = "https://truevision.se/hej.txt"  # Update this to your key file's URL
-        async with httpx.AsyncClient() as client:
-            try:
-                response = await client.get(url)
-                response.raise_for_status()
-                key = response.text.strip()
-                return key == "faca2f2d03dbdd580aaaf38c3f53661acc70555f4ff22bd1098a45a530865e0e"  # Replace with your actual key
-            except httpx.HTTPError:
-                return False
+    def display_results(self):
+        print("\nResults have been saved to JSON file.")
 
-    def check_key_loop(self):
-        while True:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            self.valid_key = loop.run_until_complete(self.verify_key())
-            loop.close()
-            time.sleep(100)  # Check every 100 seconds
+# Example usage
+if __name__ == "__main__":
+    scraper = EmailScraperApp()
+    search_term = input("Enter search term: ").replace(' ', '%20')
+    asyncio.run(scraper.run(search_term))
 
-# Initialize the GUI
-root = tk.Tk()
-app = EmailScraperApp(root)
-root.mainloop()
+
