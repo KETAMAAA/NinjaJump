@@ -180,7 +180,7 @@ async def fetch_unseen_emails():
                     print(f"Failed to decode email: {e}")
 
             # Check if the email is an auto-response
-            if is_auto_response(subject, from_, body):
+            if is_auto_response(subject, from_, body, msg):
                 print(f"Skipped auto-response from {from_}")
                 continue
 
