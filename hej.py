@@ -104,6 +104,7 @@ def is_auto_response(subject, from_, body):
         "this is an unattended mailbox",  # English
         "vi behandlar ditt ärende",  # Swedish: "we are processing your case"
         "tack för ditt mejl",  # Swedish: "thank you for your email"
+        "ärende"
     ]
 
     # Kontrollera om någon av dessa fraser finns i ämnesraden, avsändarfältet eller kroppsinnehållet
