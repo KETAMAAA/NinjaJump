@@ -104,6 +104,10 @@ def is_auto_response(subject, from_, body, msg):
         "vi behandlar ditt ärende",  # Swedish: "we are processing your case"
         "tack för ditt mejl",  # Swedish: "thank you for your email"
         "ärende"
+        "Olevererbart"
+        "Ticket"
+        "#"
+        
     ]
 
     # Additional checks for common auto-responses
@@ -113,7 +117,7 @@ def is_auto_response(subject, from_, body, msg):
         "no-reply@account.hostinger.com" in from_,
         "Email sending limits reached" in subject,
         re.search(r'postmaster@', from_) and re.search(r'Undeliverable', subject),
-        re.search(r'(?i)(autosvar|automatic reply|ärendenummer|AUTOSVAR|out of office|autoreply|out-of-office)', subject),
+        re.search(r'(?i)(autosvar|automatic reply|ärendenummer|AUTOSVAR|out of office|autoreply|out-of-office|Olevererbart)', subject),
         msg.get("Precedence") in ["bulk", "list", "auto_reply"],
         "noreply" in from_.lower(),
     ]):
