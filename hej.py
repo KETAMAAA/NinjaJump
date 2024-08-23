@@ -4,7 +4,7 @@ import email
 from email.header import decode_header
 import re
 import discord
-from discord.ext import commands, tasks
+from discord.ext import commands
 import asyncio
 
 # IMAP-konto och serverinformation
@@ -108,11 +108,7 @@ async def send_email_to_discord(subject, from_, preview):
 
 @bot.event
 async def on_ready():
-    print(f'Logged in as {bot.user}')
-    fetch_unseen_emails_loop.start()
-
-@tasks.loop(minutes=1)  # Kör varje minut
-async def fetch_unseen_emails_loop():
-    await fetch_unseen_emails()
+    await fetch_unseen_emails()  # Hämta och skicka e-postmeddelanden
+    await bot.close()  # Stäng boten när allt är klart
 
 bot.run(DISCORD_BOT_TOKEN)
