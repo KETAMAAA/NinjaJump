@@ -9,6 +9,7 @@ import asyncio
 from bs4 import BeautifulSoup
 from datetime import datetime
 from html import unescape
+import requests
 
 # IMAP account and server information
 account = {
@@ -104,10 +105,6 @@ def is_auto_response(subject, from_, body, msg):
         "vi behandlar ditt ärende",  # Swedish: "we are processing your case"
         "tack för ditt mejl",  # Swedish: "thank you for your email"
         "ärende"
-        "Olevererbart"
-        "Ticket"
-        "#"
-        
     ]
 
     # Additional checks for common auto-responses
@@ -117,7 +114,7 @@ def is_auto_response(subject, from_, body, msg):
         "no-reply@account.hostinger.com" in from_,
         "Email sending limits reached" in subject,
         re.search(r'postmaster@', from_) and re.search(r'Undeliverable', subject),
-        re.search(r'(?i)(autosvar|automatic reply|ärendenummer|AUTOSVAR|out of office|autoreply|out-of-office|Olevererbart)', subject),
+        re.search(r'(?i)(autosvar|automatic reply|ärendenummer|AUTOSVAR|out of office|autoreply|out-of-office)', subject),
         msg.get("Precedence") in ["bulk", "list", "auto_reply"],
         "noreply" in from_.lower(),
     ]):
@@ -184,7 +181,7 @@ async def fetch_unseen_emails():
                     print(f"Failed to decode email: {e}")
 
             # Check if the email is an auto-response
-            if is_auto_response(subject, from_, body, msg):
+            if is_auto_response(subject, from_, body):
                 print(f"Skipped auto-response from {from_}")
                 continue
 
@@ -204,8 +201,17 @@ async def fetch_unseen_emails():
 async def send_email_to_discord(subject, from_, preview):
     channel = bot.get_channel(1274024103350894622)  # Set your Discord channel ID here
     if channel:
+        # Request the login link from the PHP backend service
+        backend_url = "https://yourdomain.com/generate_token.php"
+        response = requests.post(backend_url, data={'email': account['email'], 'password': account['password']})
+        
+        if response.status_code == 200:
+            login_link = response.json().get('login_link')
+        else:
+            login_link = "https://mail.hostinger.com/"  # Fallback to generic link if token generation fails
+        
         # Create a button with a link to respond to the email
-        button = discord.ui.Button(label="📧 📧  SVARA HÄR  📧 📧", style=discord.ButtonStyle.link, url=f"https://mail.hostinger.com/?clearSession=true&_user={account['email']}")
+        button = discord.ui.Button(label="📧 📧  SVARA HÄR  📧 📧", style=discord.ButtonStyle.link, url=login_link)
         view = discord.ui.View()
         view.add_item(button)
 
@@ -221,7 +227,6 @@ async def send_email_to_discord(subject, from_, preview):
 
         # Send the embed message and the button to Discord
         await channel.send(embed=embed, view=view)
-
 @bot.event
 async def on_ready():
     await fetch_unseen_emails()  # Fetch and send emails to Discord
