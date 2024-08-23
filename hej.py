@@ -1,29 +1,24 @@
+import os
 import imaplib
 import email
 from email.header import decode_header
 import re
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 import asyncio
 
 # IMAP-konto och serverinformation
 account = {
-    'email': 'kim@mail.truevision.se',
-    'password': 'SuperLemon.123',
+    'email': os.getenv('EMAIL_ACCOUNT'),
+    'password': os.getenv('EMAIL_PASSWORD'),
     'imap_server': 'imap.hostinger.com'
 }
 
-# Discord bot token
-DISCORD_BOT_TOKEN = 'MTI3NjMxMjA2MDYxNTA2OTc2Ng.GuvOu8.eCWxgqHmDfSOVIQuiRlM_At06LPQP0_CIeMJ4M'
+# Discord bot token från miljövariabler
+DISCORD_BOT_TOKEN = os.getenv('DISCORD_BOT_TOKEN')
 
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
-
-# Anslutning till IMAP-servern
-def connect_to_imap():
-    mail = imaplib.IMAP4_SSL(account['imap_server'])
-    mail.login(account['email'], account['password'])
-    return mail
 
 # Funktion för att dekoda e-postheaderar som kan innehålla ÅÄÖ
 def decode_mime_words(s):
@@ -33,8 +28,11 @@ def decode_mime_words(s):
     )
 
 # Asynkron funktion för att hämta osedda e-postmeddelanden
-async def fetch_unseen_emails(mail):
+async def fetch_unseen_emails():
     try:
+        # Anslut till IMAP-servern
+        mail = imaplib.IMAP4_SSL(account['imap_server'])
+        mail.login(account['email'], account['password'])
         mail.select("inbox")
 
         # Sök efter osedda e-postmeddelanden
@@ -83,10 +81,11 @@ async def fetch_unseen_emails(mail):
             # Skicka e-postinformationen till Discord
             await send_email_to_discord(subject, from_, preview)
 
+        # Logga ut från servern
+        mail.logout()
+
     except Exception as e:
         print(f"Error fetching emails: {e}")
-    finally:
-        mail.logout()  # Logga ut från IMAP-servern när allt är klart
 
 # Funktion för att skicka e-postinformation till Discord
 async def send_email_to_discord(subject, from_, preview):
@@ -109,9 +108,11 @@ async def send_email_to_discord(subject, from_, preview):
 
 @bot.event
 async def on_ready():
-    mail = connect_to_imap()  # Anslut till IMAP-servern
-    asyncio.run(fetch_unseen_emails(mail))  # Hämta och skicka e-postmeddelanden
-    await bot.close()  # Stäng boten när allt är klart
+    print(f'Logged in as {bot.user}')
+    fetch_unseen_emails_loop.start()
+
+@tasks.loop(minutes=1)  # Kör varje minut
+async def fetch_unseen_emails_loop():
+    await fetch_unseen_emails()
 
 bot.run(DISCORD_BOT_TOKEN)
-
