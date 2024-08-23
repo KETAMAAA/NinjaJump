@@ -30,35 +30,34 @@ def decode_mime_words(s):
         for part, encoding in email.header.decode_header(s)
     )
 
-# Funktion för att rensa och extrahera text från HTML-innehåll
+# Function to clean and extract text from HTML content
 def clean_html(html_content):
-    # Försök att automatiskt reparera trasig HTML
     soup = BeautifulSoup(html_content, 'html.parser')
 
-    # Ta bort skript, stilar, kommentarer och andra oönskade taggar
+    # Remove scripts, styles, comments, and other unwanted tags
     for tag in soup(["script", "style", "head", "title", "meta", "[document]", "noscript"]):
         tag.decompose()
 
-    # Extrahera text och avkoda HTML-entiteter
+    # Extract text and decode HTML entities
     text = soup.get_text(separator=" ")
 
-    # Avkoda HTML-entiteter
+    # Decode HTML entities
     text = unescape(text)
 
-    # Ta bort extra mellanslag, nya rader, flikar, och onödiga radbrytningar
+    # Remove extra spaces, new lines, tabs, and unnecessary line breaks
     text = re.sub(r'\s+', ' ', text).strip()
 
-    # Ta bort tomma rader eller linjer med endast mellanslag
+    # Remove empty lines or lines with only spaces
     lines = [line.strip() for line in text.splitlines() if line.strip()]
 
-    # Sammanfoga linjer till ett rent textblock
+    # Combine lines into a clean text block
     cleaned_text = ' '.join(lines)
 
     return cleaned_text
 
-# Förbättrad detektering av autosvar
-def is_auto_response(subject, from_, body):
-    # Lista över vanliga fraser i autosvar, både på engelska och svenska
+# Enhanced detection of auto-responses and other irrelevant emails
+def is_auto_response(subject, from_, body, msg):
+    # List of common phrases in auto-responses, in both English and Swedish
     auto_response_phrases = [
         "detta är ett automatiskt svar",  # Swedish: "this is an automated response"
         "detta är ett automatiserat meddelande",  # Swedish
@@ -107,14 +106,25 @@ def is_auto_response(subject, from_, body):
         "ärende"
     ]
 
-    # Kontrollera om någon av dessa fraser finns i ämnesraden, avsändarfältet eller kroppsinnehållet
+    # Additional checks for common auto-responses
+    if any([
+        "MAILER-DAEMON" in from_,
+        "Undelivered Mail Returned to Sender" in subject,
+        "no-reply@account.hostinger.com" in from_,
+        "Email sending limits reached" in subject,
+        re.search(r'postmaster@', from_) and re.search(r'Undeliverable', subject),
+        re.search(r'(?i)(autosvar|automatic reply|ärendenummer|AUTOSVAR|out of office|autoreply|out-of-office)', subject),
+        msg.get("Precedence") in ["bulk", "list", "auto_reply"],
+        "noreply" in from_.lower(),
+    ]):
+        return True
+
+    # Check if any of these phrases are in the subject, sender field, or body content
     for phrase in auto_response_phrases:
         if phrase.lower() in subject.lower() or phrase.lower() in from_.lower() or phrase.lower() in body.lower():
             return True
 
     return False
-
-
 
 # Asynchronous function to fetch unseen emails
 async def fetch_unseen_emails():
@@ -146,26 +156,35 @@ async def fetch_unseen_emails():
 
                     if "attachment" not in content_disposition:
                         if content_type == "text/plain":
-                            body = part.get_payload(decode=True).decode("utf-8")
+                            try:
+                                body = part.get_payload(decode=True).decode(part.get_content_charset(), errors='replace')
+                            except Exception as e:
+                                print(f"Failed to decode email part: {e}")
                             break
                         elif content_type == "text/html":
-                            html_content = part.get_payload(decode=True).decode("utf-8")
-                            body = clean_html(html_content)
+                            try:
+                                html_content = part.get_payload(decode=True).decode(part.get_content_charset(), errors='replace')
+                                body = clean_html(html_content)
+                            except Exception as e:
+                                print(f"Failed to decode email part: {e}")
                             break
             else:
                 content_type = msg.get_content_type()
-                if content_type == "text/plain":
-                    body = msg.get_payload(decode=True).decode("utf-8")
-                elif content_type == "text/html":
-                    html_content = msg.get_payload(decode=True).decode("utf-8")
-                    body = clean_html(html_content)
+                try:
+                    if content_type == "text/plain":
+                        body = msg.get_payload(decode=True).decode(msg.get_content_charset(), errors='replace')
+                    elif content_type == "text/html":
+                        html_content = msg.get_payload(decode=True).decode(msg.get_content_charset(), errors='replace')
+                        body = clean_html(html_content)
+                except Exception as e:
+                    print(f"Failed to decode email: {e}")
 
             # Check if the email is an auto-response
             if is_auto_response(subject, from_, body):
                 print(f"Skipped auto-response from {from_}")
                 continue
 
-            # Create a preview of the message (first 100 characters)
+            # Create a preview of the message (first 150 characters)
             preview = (body[:150] + '...') if len(body) > 150 else body
 
             # Send email details to Discord
@@ -181,10 +200,12 @@ async def fetch_unseen_emails():
 async def send_email_to_discord(subject, from_, preview):
     channel = bot.get_channel(1274024103350894622)  # Set your Discord channel ID here
     if channel:
+        # Create a button with a link to respond to the email
         button = discord.ui.Button(label="📧 📧  SVARA HÄR  📧 📧", style=discord.ButtonStyle.link, url=f"https://mail.hostinger.com/?clearSession=true&_user={account['email']}")
         view = discord.ui.View()
         view.add_item(button)
 
+        # Create an embed message to display email details in Discord
         embed = discord.Embed(
             title="💰 Nytt Meddelande Mottaget! 💰",
             description="Här är detaljerna för ditt senaste e-postmeddelande:",
@@ -194,6 +215,7 @@ async def send_email_to_discord(subject, from_, preview):
         embed.add_field(name="📌 **Ämne:**", value=f"```{subject}```", inline=False)
         embed.add_field(name="🔍 **Förhandsvisning:**", value=f"```{preview}```", inline=False)
 
+        # Send the embed message and the button to Discord
         await channel.send(embed=embed, view=view)
 
 @bot.event
